@@ -1,4 +1,23 @@
 -- doors/init.lua
+local is_mtg = minetest.get_modpath("default") and minetest.settings:get_bool("doors.mtg", true)
+local is_aurum = minetest.get_modpath("aurum")
+
+local STEEL = (is_mtg and "default:steel_ingot") or (is_aurum and "aurum_ore:iron_ingot") or nil
+local GLASS = (is_mtg and "default:glass") or (is_aurum and "aurum_base:glass_white") or nil
+
+local function can_interact_with_node(player, pos)
+	if is_mtg then
+		return default.can_interact_with_node(player, pos)
+	elseif minetest.registered_nodes[minetest.get_node(pos).name].protected then
+		if is_aurum then
+			return not aurum.is_protected(pos, player)
+		else
+			return not minetest.is_protected(pos, player)
+		end
+	else
+		return true
+	end
+end
 
 -- our API object
 doors = {}
@@ -148,7 +167,7 @@ function doors.door_toggle(pos, node, clicker)
 
 	replace_old_owner_information(pos)
 
-	if clicker and not default.can_interact_with_node(clicker, pos) then
+	if clicker and not can_interact_with_node(clicker, pos) then
 		return false
 	end
 
@@ -209,7 +228,7 @@ end
 
 local function can_dig_door(pos, digger)
 	replace_old_owner_information(pos)
-	return default.can_interact_with_node(digger, pos)
+	return can_interact_with_node(digger, pos)
 end
 
 function doors.register(name, def)
@@ -327,7 +346,9 @@ function doors.register(name, def)
 
 			if def.protected then
 				meta:set_string("owner", pn)
-				meta:set_string("infotext", def.description .. "\n" .. S("Owned by @1", pn))
+				if is_mtg then
+					meta:set_string("infotext", def.description .. "\n" .. S("Owned by @1", pn))
+				end
 			end
 
 			if not minetest.is_creative_enabled(pn) then
@@ -353,7 +374,7 @@ function doors.register(name, def)
 	def.recipe = nil
 
 	if not def.sounds then
-		def.sounds = default.node_sound_wood_defaults()
+		def.sounds = (is_mtg and default.node_sound_wood_defaults()) or (is_aurum and aurum.sounds.wood()) or nil
 	end
 
 	if not def.sound_open then
@@ -465,21 +486,41 @@ function doors.register(name, def)
 	doors.registered_doors[name .. "_d"] = true
 end
 
-doors.register("door_wood", {
+if is_mtg or is_aurum then
+	doors.register("door_wood", {
 		tiles = {{ name = "doors_door_wood.png", backface_culling = true }},
 		description = S("Wooden Door"),
 		inventory_image = "doors_item_wood.png",
-		groups = {node = 1, choppy = 2, oddly_breakable_by_hand = 2, flammable = 2},
 		gain_open = 0.06,
 		gain_close = 0.13,
+		groups = {[(is_mtg and "cracky") or (is_aurum and "dig_chop")] = 2, [(is_mtg and "oddly_breakable_by_hand") or (is_aurum and "dig_handle")] = 2, flammable = 2, node = 1},
 		recipe = {
 			{"group:wood", "group:wood"},
 			{"group:wood", "group:wood"},
 			{"group:wood", "group:wood"},
-		}
-})
+		},
+	})
 
-doors.register("door_steel", {
+	doors.register("door_glass", {
+		tiles = {"doors_door_glass.png"},
+		description = S("Glass Door"),
+		inventory_image = "doors_item_glass.png",
+		groups = {[(is_mtg and "cracky") or (is_aurum and "dig_pick")]=3, [(is_mtg and "oddly_breakable_by_hand") or (is_aurum and "dig_handle")]=3, node = 1},
+		sounds = (is_mtg and default.node_sound_glass_defaults()) or (is_aurum and aurum.sounds.glass()) or nil,
+		sound_open = "doors_glass_door_open",
+		sound_close = "doors_glass_door_close",
+		gain_open = 0.3,
+		gain_close = 0.25,
+		recipe = {
+			{GLASS, GLASS},
+			{GLASS, GLASS},
+			{GLASS, GLASS},
+		},
+	})
+end
+
+if is_mtg then
+	doors.register("door_steel", {
 		tiles = {{name = "doors_door_steel.png", backface_culling = true}},
 		description = S("Steel Door"),
 		inventory_image = "doors_item_steel.png",
@@ -491,30 +532,13 @@ doors.register("door_steel", {
 		gain_open = 0.2,
 		gain_close = 0.2,
 		recipe = {
-			{"default:steel_ingot", "default:steel_ingot"},
-			{"default:steel_ingot", "default:steel_ingot"},
-			{"default:steel_ingot", "default:steel_ingot"},
-		}
-})
+			{STEEL, STEEL},
+			{STEEL, STEEL},
+			{STEEL, STEEL},
+		},
+	})
 
-doors.register("door_glass", {
-		tiles = {"doors_door_glass.png"},
-		description = S("Glass Door"),
-		inventory_image = "doors_item_glass.png",
-		groups = {node = 1, cracky=3, oddly_breakable_by_hand=3},
-		sounds = default.node_sound_glass_defaults(),
-		sound_open = "doors_glass_door_open",
-		sound_close = "doors_glass_door_close",
-		gain_open = 0.3,
-		gain_close = 0.25,
-		recipe = {
-			{"default:glass", "default:glass"},
-			{"default:glass", "default:glass"},
-			{"default:glass", "default:glass"},
-		}
-})
-
-doors.register("door_obsidian_glass", {
+	doors.register("door_obsidian_glass", {
 		tiles = {"doors_door_obsidian_glass.png"},
 		description = S("Obsidian Glass Door"),
 		inventory_image = "doors_item_obsidian_glass.png",
@@ -529,7 +553,39 @@ doors.register("door_obsidian_glass", {
 			{"default:obsidian_glass", "default:obsidian_glass"},
 			{"default:obsidian_glass", "default:obsidian_glass"},
 		},
-})
+	})
+elseif is_aurum then
+	doors.register("door_iron", {
+		tiles = {{name = "doors_door_steel.png", backface_culling = true}},
+		description = S("Iron Door"),
+		inventory_image = "doors_item_steel.png",
+		protected = true,
+		groups = {dig_pick = 1, level = 2},
+		sounds = aurum.sounds.metal(),
+		sound_open = "doors_steel_door_open",
+		sound_close = "doors_steel_door_close",
+		recipe = {
+			{STEEL, STEEL},
+			{STEEL, STEEL},
+			{STEEL, STEEL},
+		}
+	})
+
+	doors.register("door_black_glass", {
+		tiles = {"doors_door_obsidian_glass.png"},
+		description = S("Black Glass Door"),
+		inventory_image = "doors_item_obsidian_glass.png",
+		groups = {dig_pick = 3},
+		sounds = aurum.sounds.glass(),
+		sound_open = "doors_glass_door_open",
+		sound_close = "doors_glass_door_close",
+		recipe = {
+			{"aurum_base:glass_black", "aurum_base:glass_black"},
+			{"aurum_base:glass_black", "aurum_base:glass_black"},
+			{"aurum_base:glass_black", "aurum_base:glass_black"},
+		},
+	})
+end
 
 -- Capture mods using the old API as best as possible.
 function doors.register_door(name, def)
@@ -562,7 +618,7 @@ function doors.trapdoor_toggle(pos, node, clicker)
 
 	replace_old_owner_information(pos)
 
-	if clicker and not default.can_interact_with_node(clicker, pos) then
+	if clicker and not can_interact_with_node(clicker, pos) then
 		return false
 	end
 
@@ -607,7 +663,10 @@ function doors.register_trapdoor(name, def)
 			local pn = placer:get_player_name()
 			local meta = minetest.get_meta(pos)
 			meta:set_string("owner", pn)
-			meta:set_string("infotext", def.description .. "\n" .. S("Owned by @1", pn))
+
+			if is_mtg then
+				meta:set_string("infotext", def.description .. "\n" .. S("Owned by @1", pn))
+			end
 
 			return minetest.is_creative_enabled(pn)
 		end
@@ -647,7 +706,7 @@ function doors.register_trapdoor(name, def)
 	end
 
 	if not def.sounds then
-		def.sounds = default.node_sound_wood_defaults()
+		def.sounds = (is_mtg and default.node_sound_wood_defaults()) or (is_aurum and aurum.sounds.wood()) or nil
 	end
 
 	if not def.sound_open then
@@ -721,23 +780,56 @@ doors.register_trapdoor("doors:trapdoor", {
 	tile_side = "doors_trapdoor_side.png",
 	gain_open = 0.06,
 	gain_close = 0.13,
-	groups = {choppy = 2, oddly_breakable_by_hand = 2, flammable = 2, door = 1},
+	groups = {[(is_mtg and "cracky") or (is_aurum and "dig_chop")] = 2, [(is_mtg and "oddly_breakable_by_hand") or (is_aurum and "dig_handle")] = 2, flammable = 2, door = 1},
 })
 
-doors.register_trapdoor("doors:trapdoor_steel", {
-	description = S("Steel Trapdoor"),
-	inventory_image = "doors_trapdoor_steel.png",
-	wield_image = "doors_trapdoor_steel.png",
-	tile_front = "doors_trapdoor_steel.png",
-	tile_side = "doors_trapdoor_steel_side.png",
-	protected = true,
-	sounds = default.node_sound_metal_defaults(),
-	sound_open = "doors_steel_door_open",
-	sound_close = "doors_steel_door_close",
-	gain_open = 0.2,
-	gain_close = 0.2,
-	groups = {cracky = 1, level = 2, door = 1},
-})
+if is_mtg then
+	doors.register_trapdoor("doors:trapdoor_steel", {
+		description = S("Steel Trapdoor"),
+		inventory_image = "doors_trapdoor_steel.png",
+		wield_image = "doors_trapdoor_steel.png",
+		tile_front = "doors_trapdoor_steel.png",
+		tile_side = "doors_trapdoor_steel_side.png",
+		protected = true,
+		sounds = default.node_sound_metal_defaults(),
+		sound_open = "doors_steel_door_open",
+		sound_close = "doors_steel_door_close",
+		gain_open = 0.2,
+		gain_close = 0.2,
+		groups = {cracky = 1, level = 2, door = 1},
+	})
+
+	minetest.register_craft({
+		output = "doors:trapdoor_steel",
+		recipe = {
+			{STEEL, STEEL},
+			{STEEL, STEEL},
+		}
+	})
+elseif is_aurum then
+	doors.register_trapdoor("doors:trapdoor_iron", {
+		description = S("Iron Trapdoor"),
+		inventory_image = "doors_trapdoor_steel.png",
+		wield_image = "doors_trapdoor_steel.png",
+		tile_front = "doors_trapdoor_steel.png",
+		tile_side = "doors_trapdoor_steel_side.png",
+		protected = true,
+		sounds = aurum.sounds.metal(),
+		sound_open = "doors_steel_door_open",
+		sound_close = "doors_steel_door_close",
+		gain_open = 0.2,
+		gain_close = 0.2,
+		groups = {dig_pick = 1, level = 2, door = 1},
+	})
+
+	minetest.register_craft({
+		output = "doors:trapdoor_iron",
+		recipe = {
+			{STEEL, STEEL},
+			{STEEL, STEEL},
+		}
+	})
+end
 
 minetest.register_craft({
 	output = "doors:trapdoor 2",
@@ -745,14 +837,6 @@ minetest.register_craft({
 		{"group:wood", "group:wood", "group:wood"},
 		{"group:wood", "group:wood", "group:wood"},
 		{"", "", ""},
-	}
-})
-
-minetest.register_craft({
-	output = "doors:trapdoor_steel",
-	recipe = {
-		{"default:steel_ingot", "default:steel_ingot"},
-		{"default:steel_ingot", "default:steel_ingot"},
 	}
 })
 
@@ -797,7 +881,7 @@ function doors.register_fencegate(name, def)
 	end
 
 	if not fence.sounds then
-		fence.sounds = default.node_sound_wood_defaults()
+		fence.sounds = (is_mtg and default.node_sound_wood_defaults()) or (is_aurum and aurum.sounds.wood()) or nil
 	end
 
 	fence.groups.fence = 1
@@ -834,40 +918,42 @@ function doors.register_fencegate(name, def)
 	})
 end
 
-doors.register_fencegate("doors:gate_wood", {
-	description = S("Apple Wood Fence Gate"),
-	texture = "default_wood.png",
-	material = "default:wood",
-	groups = {choppy = 2, oddly_breakable_by_hand = 2, flammable = 2}
-})
+if is_mtg then
+	doors.register_fencegate("doors:gate_wood", {
+		description = S("Apple Wood Fence Gate"),
+		texture = "default_wood.png",
+		material = "default:wood",
+		groups = {choppy = 2, oddly_breakable_by_hand = 2, flammable = 2}
+	})
 
-doors.register_fencegate("doors:gate_acacia_wood", {
-	description = S("Acacia Wood Fence Gate"),
-	texture = "default_acacia_wood.png",
-	material = "default:acacia_wood",
-	groups = {choppy = 2, oddly_breakable_by_hand = 2, flammable = 2}
-})
+	doors.register_fencegate("doors:gate_acacia_wood", {
+		description = S("Acacia Wood Fence Gate"),
+		texture = "default_acacia_wood.png",
+		material = "default:acacia_wood",
+		groups = {choppy = 2, oddly_breakable_by_hand = 2, flammable = 2}
+	})
 
-doors.register_fencegate("doors:gate_junglewood", {
-	description = S("Jungle Wood Fence Gate"),
-	texture = "default_junglewood.png",
-	material = "default:junglewood",
-	groups = {choppy = 2, oddly_breakable_by_hand = 2, flammable = 2}
-})
+	doors.register_fencegate("doors:gate_junglewood", {
+		description = S("Jungle Wood Fence Gate"),
+		texture = "default_junglewood.png",
+		material = "default:junglewood",
+		groups = {choppy = 2, oddly_breakable_by_hand = 2, flammable = 2}
+	})
 
-doors.register_fencegate("doors:gate_pine_wood", {
-	description = S("Pine Wood Fence Gate"),
-	texture = "default_pine_wood.png",
-	material = "default:pine_wood",
-	groups = {choppy = 3, oddly_breakable_by_hand = 2, flammable = 3}
-})
+	doors.register_fencegate("doors:gate_pine_wood", {
+		description = S("Pine Wood Fence Gate"),
+		texture = "default_pine_wood.png",
+		material = "default:pine_wood",
+		groups = {choppy = 3, oddly_breakable_by_hand = 2, flammable = 3}
+	})
 
-doors.register_fencegate("doors:gate_aspen_wood", {
-	description = S("Aspen Wood Fence Gate"),
-	texture = "default_aspen_wood.png",
-	material = "default:aspen_wood",
-	groups = {choppy = 3, oddly_breakable_by_hand = 2, flammable = 3}
-})
+	doors.register_fencegate("doors:gate_aspen_wood", {
+		description = S("Aspen Wood Fence Gate"),
+		texture = "default_aspen_wood.png",
+		material = "default:aspen_wood",
+		groups = {choppy = 3, oddly_breakable_by_hand = 2, flammable = 3}
+	})
+end
 
 
 ----fuels----
